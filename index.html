@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dune Spice Wars — Economy Widget</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0e0c09;
+    --surface:   #17140e;
+    --surface2:  #1f1b12;
+    --border:    #2e2820;
+    --text:      #e0cfa0;
+    --text2:     #8a7c58;
+    --text3:     #5a5038;
+    --accent:    #c9a227;
+    --accent-dim:#7a6015;
+    --success:   #4a9a5a;
+    --danger:    #b84040;
+    --warning:   #c07030;
+    --radius:    6px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    min-height: 100vh;
+  }
+
+  .app { max-width: 900px; margin: 0 auto; padding: 20px 16px 40px; }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 18px; flex-wrap: wrap;
+  }
+  h1 {
+    font-size: 18px; font-weight: 600; letter-spacing: 0.03em;
+    color: var(--accent); flex: 1;
+  }
+  .price-row { display: flex; align-items: center; gap: 8px; }
+  .label { color: var(--text2); font-size: 12px; }
+  .price-val { font-weight: 600; min-width: 52px; text-align: right; color: var(--accent); }
+
+  /* Stats strip */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 12px;
+  }
+  .stat-value { font-size: 22px; font-weight: 700; line-height: 1; }
+  .stat-label { color: var(--text2); font-size: 11px; margin-top: 4px; }
+  .stat.success .stat-value { color: var(--success); }
+  .stat.danger  .stat-value { color: var(--danger);  }
+  .stat.accent  .stat-value { color: var(--accent);  }
+
+  /* Total bar */
+  .total-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 9px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .total-bar .label { font-size: 12px; }
+  .total-bar .big { font-size: 16px; font-weight: 700; color: var(--accent); }
+
+  /* Divider */
+  hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+  /* Main layout */
+  .main { display: flex; gap: 20px; align-items: flex-start; }
+
+  /* Map section */
+  .map-section { flex-shrink: 0; }
+  .map-section h2 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .map-hint { color: var(--text2); font-size: 11px; margin-bottom: 8px; }
+  .map-wrap {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; display: inline-block;
+    background: var(--surface);
+  }
+  svg { display: block; }
+  .hex { cursor: pointer; transition: opacity 0.1s; }
+  .hex:hover polygon { opacity: 0.85; }
+
+  /* Detail panel */
+  .detail { flex: 1; min-width: 260px; }
+  .detail h2 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .detail-coords { color: var(--text2); font-size: 11px; margin-left: 6px; }
+  .empty-hint { color: var(--text2); padding: 12px 0; }
+
+  /* Section headers inside detail */
+  .section-title {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text3); margin-bottom: 6px;
+  }
+
+  /* Quirk row */
+  .quirk-row, .bldg-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 5px 0;
+  }
+  .quirk-info, .bldg-info { flex: 1; }
+  .bldg-name { font-size: 12px; font-weight: 600; }
+  .bldg-name.disabled { color: var(--text3); }
+  .bldg-meta { color: var(--text2); font-size: 11px; margin-top: 1px; }
+  .bldg-upkeep { margin-left: 6px; color: var(--text3); }
+
+  /* Toggle switch */
+  .toggle { position: relative; display: inline-block; width: 30px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute; inset: 0; border-radius: 8px;
+    background: var(--border); transition: background 0.15s; cursor: pointer;
+  }
+  .toggle input:checked + .toggle-track { background: var(--accent); }
+  .toggle input:disabled + .toggle-track { opacity: 0.35; cursor: not-allowed; }
+  .toggle-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--text2); transition: left 0.15s, background 0.15s;
+    pointer-events: none;
+  }
+  .toggle input:checked ~ .toggle-thumb { left: 16px; background: var(--bg); }
+
+  /* Spice slider */
+  .spice-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 0 4px 38px;
+  }
+  .spice-row .label { white-space: nowrap; }
+  .spice-row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .spice-val { font-weight: 600; min-width: 28px; text-align: right; }
+
+  input[type=range] { accent-color: var(--accent); }
+
+  /* Enemy toggle — red when on */
+  .toggle-enemy input:checked + .toggle-track { background: var(--danger); }
+
+  /* Quirk tooltip */
+  .tip-anchor {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--border); color: var(--text2);
+    font-size: 10px; font-weight: 700; line-height: 1;
+    cursor: help; margin-left: 5px;
+    position: relative; vertical-align: middle; flex-shrink: 0;
+  }
+  .tip-anchor .tip-box {
+    display: none; position: absolute;
+    bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-size: 11px; font-weight: 400;
+    padding: 7px 10px; border-radius: 4px;
+    width: 230px; white-space: normal; z-index: 20; pointer-events: none;
+    line-height: 1.5;
+  }
+  .tip-anchor:hover .tip-box { display: block; }
+
+  /* Legend */
+  .legend { margin-top: 18px; color: var(--text2); font-size: 11px; line-height: 1.7; }
+
+  /* Section divider inside detail */
+  .section-divider { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: var(--danger); color: #fff;
+    padding: 9px 18px; border-radius: var(--radius);
+    font-size: 13px; font-weight: 500;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 999;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 680px) {
+    .main { flex-direction: column; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Dune Spice Wars — Economy Widget</h1>
+    <div class="price-row">
+      <span class="label">Spice price</span>
+      <input type="range" id="priceSlider" min="0.5" max="4" step="0.1" value="2"
+             style="width:110px" oninput="onPriceChange(this.value)">
+      <span class="price-val" id="priceVal">2.0 sol</span>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat" id="statSpice">
+      <div class="stat-value" id="valSpice">0</div>
+      <div class="stat-label">Spice Income</div>
+    </div>
+    <div class="stat success" id="statTr">
+      <div class="stat-value" id="valTr">0</div>
+      <div class="stat-label">Traffic Solari</div>
+    </div>
+    <div class="stat" id="statUp">
+      <div class="stat-value" id="valUp">0</div>
+      <div class="stat-label">Upkeep Cost</div>
+    </div>
+    <div class="stat" id="statNet">
+      <div class="stat-value" id="valNet">0</div>
+      <div class="stat-label">Net Solari</div>
+    </div>
+  </div>
+
+  <!-- Total bar -->
+  <div class="total-bar">
+    <span class="label" id="totalLabel">Total income — all spice sold @ 2.0× + net Solari</span>
+    <span class="big" id="totalVal">0 Solari</span>
+  </div>
+
+  <hr>
+
+  <!-- Main: map + detail -->
+  <div class="main">
+
+    <div class="map-section">
+      <h2>Hex Map</h2>
+      <p class="map-hint">Click to select &nbsp;·&nbsp; dot = quirks &nbsp;·&nbsp; # = buildings &nbsp;·&nbsp; <span style="color:#b84040">red</span> = enemy</p>
+      <div class="map-wrap">
+        <svg id="hexSvg" width="380" height="336"></svg>
+      </div>
+    </div>
+
+    <div class="detail">
+      <h2>Selected Hex <span class="detail-coords" id="selCoords"></span></h2>
+      <div id="detailContent"><p class="empty-hint">Click a hex on the map to configure it.</p></div>
+    </div>
+
+  </div>
+
+  <!-- Legend -->
+  <p class="legend">
+    Zone = hex + its 6 neighbours &nbsp;·&nbsp;
+    Quirk buffs stack additively &nbsp;·&nbsp;
+    Trafficking stations collect from both player refineries and enemy hexes in zone &nbsp;·&nbsp;
+    Furnace (map limit: 1): +30% zone refinery output (before quirks) · zone stations 80% → 104%
+  </p>
+
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+
+const RADIUS = 5;
+const HEX_S  = 18;
+const SQ3    = Math.sqrt(3);
+const DIRS   = [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
+const SVG_W  = 380, SVG_H = 336, CX = SVG_W/2, CY = SVG_H/2;
+
+const QUIRKS = [
+  { key:'im', label:'Ingenious Mind', pct:20, stationExcluded:true,
+    tip:'Boosts refinery output only. Trafficking stations calculate Solari from spice before this bonus.' },
+  { key:'hw', label:'Hardworkers',    pct:10, stationExcluded:false, tip:null },
+  { key:'vs', label:'Versatile',      pct:20, stationExcluded:false, tip:null },
+];
+
+const BLDGS = [
+  { key:'ref', label:'Refinery',             upkeep:12, desc:'Produces spice (adjust slider below)',                         enemyOnly:false },
+  { key:'trf', label:'Trafficking Station',  upkeep: 8, desc:'-20% zone spice (stacks) · +80% zone spice as bonus Solari',  enemyOnly:false },
+  { key:'inv', label:'Investment Office',    upkeep:10, desc:'Doubles quirk bonuses on this hex',                            enemyOnly:false },
+  { key:'mnt', label:'Maintenance Office',   upkeep: 0, desc:'-20% upkeep in zone (stacks)',                                enemyOnly:false },
+  { key:'fur', label:'Experimental Furnace', upkeep:20, desc:'+30% zone refinery output (before quirks) · zone stations: 80% → 104% Solari rate · Map limit: 1', enemyOnly:false },
+  { key:'wg',  label:"Worker's Guild",       upkeep: 0, desc:'+20% spice production on this enemy hex',                    enemyOnly:true  },
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+const state = {
+  hexMap: {},   // Record<"q,r", HexData>
+  selected: '', // "q,r" or ""
+  price: 2.0,
+};
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem('dsw-eco');
+    if (saved) Object.assign(state, JSON.parse(saved));
+  } catch(_) {}
+}
+function saveState() {
+  try { localStorage.setItem('dsw-eco', JSON.stringify(state)); } catch(_) {}
+}
+
+// ── Hex math ──────────────────────────────────────────────────────────────────
+
+function hk(q,r) { return `${q},${r}`; }
+function pk(k)   { const [q,r]=k.split(',').map(Number); return [q,r]; }
+function valid(q,r) { return Math.abs(q)<=RADIUS && Math.abs(r)<=RADIUS && Math.abs(q+r)<=RADIUS; }
+
+function nbrs(q,r) {
+  return DIRS.map(([dq,dr])=>[q+dq,r+dr]).filter(([a,b])=>valid(a,b)).map(([a,b])=>hk(a,b));
+}
+function zone(k) { const [q,r]=pk(k); return [k,...nbrs(q,r)]; }
+
+function hexCenter(q,r) { return [HEX_S*(SQ3*q+SQ3/2*r), HEX_S*(3/2*r)]; }
+function hexPoints(cx,cy,s) {
+  return Array.from({length:6},(_,i)=>{
+    const a = Math.PI/180*(60*i-30);
+    return `${(cx+s*Math.cos(a)).toFixed(1)},${(cy+s*Math.sin(a)).toFixed(1)}`;
+  }).join(' ');
+}
+
+const ALL_HEXES = [];
+for (let q=-RADIUS;q<=RADIUS;q++)
+  for (let r=-RADIUS;r<=RADIUS;r++)
+    if (valid(q,r)) ALL_HEXES.push(hk(q,r));
+
+// ── Data helpers ──────────────────────────────────────────────────────────────
+
+function dft() {
+  return {
+    quirks:    { im:false, hw:false, vs:false },
+    buildings: { ref:false, trf:false, inv:false, mnt:false, fur:false, wg:false },
+    spice: 60,
+    enemy: false,
+    enemySpice: 60,
+  };
+}
+function gh(k) { return state.hexMap[k] ?? dft(); }
+
+function setHex(k, data) {
+  state.hexMap[k] = data;
+  saveState();
+}
+
+// ── Economy calculation ───────────────────────────────────────────────────────
+
+function calcEco() {
+  // Locate furnace zone once — used for both refinery boost and station rate
+  const furHex  = ALL_HEXES.find(k => !gh(k).enemy && gh(k).buildings.fur) ?? null;
+  const furZone = furHex ? new Set(zone(furHex)) : new Set();
+
+  // producedFull:    full spice income (includes IM + furnace boost)
+  // producedTraffic: station-visible spice (furnace boost included, IM excluded)
+  // producedEnemy:   enemy hex spice
+  const producedFull    = {};
+  const producedTraffic = {};
+  const producedEnemy   = {};
+  let upkeep = 0;
+
+  for (const k of ALL_HEXES) {
+    const h   = gh(k);
+    const inf = zone(k);
+
+    let trfc = 0; for (const nk of inf) if (!gh(nk).enemy && gh(nk).buildings.trf) trfc++;
+    const penalty = Math.max(0, 1 - trfc*0.2);
+
+    if (h.enemy) {
+      const wgBonus = h.buildings.wg ? 1.20 : 1.0;
+      producedEnemy[k] = h.enemySpice * wgBonus * penalty;
+    } else {
+      // Furnace: +30% to refinery base, applied before quirks
+      const furBonus = (h.buildings.ref && furZone.has(k)) ? 1.30 : 1.0;
+
+      // qbAll: all quirk bonuses; qbStation: IM excluded (station can't see IM)
+      let qbAll = 0, qbStation = 0;
+      for (const {key, pct, stationExcluded} of QUIRKS) {
+        if (h.quirks[key]) {
+          qbAll += pct / 100;
+          if (!stationExcluded) qbStation += pct / 100;
+        }
+      }
+      if (h.buildings.inv) { qbAll *= 2; qbStation *= 2; }
+
+      if (h.buildings.ref) {
+        producedFull[k]    = h.spice * furBonus * (1 + qbAll)     * penalty;
+        producedTraffic[k] = h.spice * furBonus * (1 + qbStation) * penalty;
+      }
+
+      let hu = BLDGS.reduce((s,{key,upkeep:u})=>s+(h.buildings[key]?u:0), 0);
+      let mnts = 0; for (const nk of inf) if (gh(nk).buildings.mnt) mnts++;
+      hu *= Math.max(0, 1 - mnts*0.2);
+      upkeep += hu;
+    }
+  }
+
+  const spice = Object.values(producedFull).reduce((s,v)=>s+v, 0);
+
+  // Stations see traffic-visible player spice + enemy spice
+  const forStation = { ...producedTraffic, ...producedEnemy };
+
+  let trSol = 0;
+  for (const k of ALL_HEXES) {
+    if (gh(k).enemy || !gh(k).buildings.trf) continue;
+    // Furnace changes station rate: 80% → 104%
+    const rate = furZone.has(k) ? 1.04 : 0.80;
+    for (const nk of zone(k))
+      if (forStation[nk] !== undefined) trSol += forStation[nk] * rate;
+  }
+
+  const net   = trSol - upkeep;
+  const total = net + spice * state.price;
+  return { spice, trSol, upkeep, net, total };
+}
+
+// ── SVG Hex Map ───────────────────────────────────────────────────────────────
+
+const COLORS = {
+  empty:      '#17140e',
+  building:   '#242018',
+  selected:   '#7a6015',
+  stroke:     '#2e2820',
+  strokeSel:  '#c9a227',
+  dot:        '#c9a227',
+  textSel:    '#e0cfa0',
+  textDim:    '#8a7c58',
+  enemy:      '#1e0d0d',
+  enemySel:   '#5a1818',
+  enemyStroke:'#6a2828',
+};
+
+function renderMap() {
+  const svg = document.getElementById('hexSvg');
+  svg.innerHTML = '';
+
+  for (const k of ALL_HEXES) {
+    const [q,r] = pk(k);
+    const [px,py] = hexCenter(q,r);
+    const h = gh(k);
+    const isSel   = k === state.selected;
+    const isEnemy = !!h.enemy;
+    const nBldg   = isEnemy ? 0 : BLDGS.filter(b=>h.buildings[b.key]).length;
+    const activeQ = isEnemy ? 0 : QUIRKS.filter(qk=>h.quirks[qk.key]).length;
+
+    let fill, stroke, sw;
+    if (isEnemy) {
+      fill   = isSel ? COLORS.enemySel : COLORS.enemy;
+      stroke = isSel ? COLORS.strokeSel : COLORS.enemyStroke;
+      sw     = isSel ? 2 : 1;
+    } else {
+      fill   = isSel ? COLORS.selected : nBldg>0 ? COLORS.building : COLORS.empty;
+      stroke = isSel ? COLORS.strokeSel : COLORS.stroke;
+      sw     = isSel ? 2 : 1;
+    }
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class','hex');
+    g.dataset.key = k;
+
+    const poly = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points', hexPoints(CX+px, CY+py, HEX_S-1.5));
+    poly.setAttribute('fill', fill);
+    poly.setAttribute('stroke', stroke);
+    poly.setAttribute('stroke-width', sw);
+    g.appendChild(poly);
+
+    // Quirk dots — 1 or 2 depending on active quirk count
+    if (activeQ > 0) {
+      const dotY   = CY+py-(nBldg>0?5:0);
+      const dotClr = isSel ? COLORS.textSel : COLORS.dot;
+      function addDot(dx) {
+        const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        c.setAttribute('cx', CX+px+dx); c.setAttribute('cy', dotY);
+        c.setAttribute('r', 2.2); c.setAttribute('fill', dotClr); c.setAttribute('opacity', 0.85);
+        g.appendChild(c);
+      }
+      if (activeQ === 1) addDot(0);
+      else { addDot(-3.5); addDot(3.5); }
+    }
+
+    // Enemy marker: small diamond (+ guild dot if Worker's Guild built)
+    if (isEnemy) {
+      const hasWG = !!h.buildings.wg;
+      const d = 4;
+      const ex = CX+px, ey = CY+py+(hasWG?-3:0);
+      const diamond = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+      diamond.setAttribute('points', `${ex},${ey-d} ${ex+d},${ey} ${ex},${ey+d} ${ex-d},${ey}`);
+      diamond.setAttribute('fill', isSel ? '#e07070' : '#b84040');
+      diamond.setAttribute('opacity', 0.8);
+      g.appendChild(diamond);
+      if (hasWG) {
+        const gc = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        gc.setAttribute('cx', CX+px); gc.setAttribute('cy', CY+py+4);
+        gc.setAttribute('r', 2); gc.setAttribute('fill', '#c9a227'); gc.setAttribute('opacity', 0.85);
+        g.appendChild(gc);
+      }
+    }
+
+    if (nBldg > 0) {
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', CX+px);
+      txt.setAttribute('y', CY+py+(activeQ>0?5:4));
+      txt.setAttribute('text-anchor','middle');
+      txt.setAttribute('fill', isSel ? COLORS.textSel : COLORS.textDim);
+      txt.setAttribute('font-size', 9);
+      txt.setAttribute('font-family', 'Segoe UI, sans-serif');
+      txt.setAttribute('font-weight', 'bold');
+      txt.textContent = nBldg;
+      g.appendChild(txt);
+    }
+
+    g.addEventListener('click', () => onHexClick(k));
+    svg.appendChild(g);
+  }
+}
+
+// ── Detail Panel ──────────────────────────────────────────────────────────────
+
+function renderDetail() {
+  const coordEl  = document.getElementById('selCoords');
+  const container = document.getElementById('detailContent');
+
+  if (!state.selected) {
+    coordEl.textContent = '';
+    container.innerHTML = '<p class="empty-hint">Click a hex on the map to configure it.</p>';
+    return;
+  }
+
+  const k = state.selected;
+  coordEl.textContent = `(${k})`;
+  const h = gh(k);
+  const furElsewhere = ALL_HEXES.some(nk => nk!==k && gh(nk).buildings.fur);
+
+  let html = '';
+
+  // Enemy hex toggle (always visible at top)
+  html += `
+    <div class="quirk-row" style="margin-bottom:4px">
+      <label class="toggle toggle-enemy">
+        <input type="checkbox" ${h.enemy?'checked':''} onchange="onEnemyChange(this.checked)">
+        <span class="toggle-track"></span><span class="toggle-thumb"></span>
+      </label>
+      <div style="font-weight:600;color:${h.enemy?'var(--danger)':'var(--text)'}">
+        Enemy Hex
+        <span style="color:var(--text2);font-size:11px;font-weight:400;margin-left:6px">
+          ${h.enemy ? 'Trafficking stations will intercept this hex\'s spice' : 'Mark as enemy territory'}
+        </span>
+      </div>
+    </div>
+    <hr class="section-divider">`;
+
+  if (h.enemy) {
+    // Enemy mode: spice slider + Worker's Guild
+    html += `
+      <div class="section-title">Enemy Spice Production</div>
+      <div class="spice-row" style="padding-left:0">
+        <span class="label">Spice:</span>
+        <input type="range" min="20" max="120" step="1" value="${h.enemySpice}"
+               oninput="onEnemySpiceChange(this.value)">
+        <span class="spice-val" id="enemySpiceVal">${Math.round(h.enemySpice)}</span>
+      </div>
+      <hr class="section-divider">
+      <div class="section-title">Buildings</div>`;
+
+    for (const {key,label,upkeep,desc} of BLDGS.filter(b=>b.enemyOnly)) {
+      html += `
+        <div class="bldg-row">
+          <label class="toggle">
+            <input type="checkbox" ${h.buildings[key]?'checked':''} onchange="onBldgChange('${key}',this.checked)">
+            <span class="toggle-track"></span><span class="toggle-thumb"></span>
+          </label>
+          <div class="bldg-info">
+            <div class="bldg-name">${label}<span class="bldg-upkeep">upkeep ${upkeep}</span></div>
+            <div class="bldg-meta">${desc}</div>
+          </div>
+        </div>`;
+    }
+  } else {
+    // Player mode: quirks + buildings
+    html += `<div class="section-title">Quirks</div>`;
+    for (const {key,label,pct,tip} of QUIRKS) {
+      const tipHtml = tip
+        ? `<span class="tip-anchor">?<span class="tip-box">${tip}</span></span>`
+        : '';
+      html += `
+        <div class="quirk-row">
+          <label class="toggle">
+            <input type="checkbox" ${h.quirks[key]?'checked':''} onchange="onQuirkChange('${key}',this.checked)">
+            <span class="toggle-track"></span><span class="toggle-thumb"></span>
+          </label>
+          <div class="quirk-info" style="display:flex;align-items:center;gap:0;flex-wrap:wrap">
+            <span>${label}${tipHtml}</span>
+            <span style="color:var(--text2);margin-left:6px">+${pct}%</span>
+          </div>
+        </div>`;
+    }
+
+    html += `<hr class="section-divider">`;
+
+    const playerBldgs = BLDGS.filter(b=>!b.enemyOnly);
+    const bCount = playerBldgs.filter(b=>h.buildings[b.key]).length;
+    html += `<div class="section-title">Buildings (${bCount}/5)</div>`;
+
+    for (const {key,label,upkeep,desc} of playerBldgs) {
+      const isBlocked = key==='fur' && !h.buildings[key] && furElsewhere;
+      const disabled  = isBlocked ? 'disabled' : '';
+      html += `
+        <div class="bldg-row">
+          <label class="toggle">
+            <input type="checkbox" ${h.buildings[key]?'checked':''} ${disabled}
+                   onchange="onBldgChange('${key}',this.checked)">
+            <span class="toggle-track"></span><span class="toggle-thumb"></span>
+          </label>
+          <div class="bldg-info">
+            <div class="bldg-name ${isBlocked?'disabled':''}">
+              ${label}
+              <span class="bldg-upkeep">upkeep ${upkeep}</span>
+              ${isBlocked ? '<span style="color:var(--text3);font-size:11px;margin-left:4px">[already placed]</span>' : ''}
+            </div>
+            <div class="bldg-meta">${desc}</div>
+          </div>
+        </div>`;
+
+      if (key==='ref' && h.buildings.ref) {
+        html += `
+          <div class="spice-row">
+            <span class="label">Spice:</span>
+            <input type="range" min="20" max="120" step="1" value="${h.spice}"
+                   oninput="onSpiceChange(this.value)">
+            <span class="spice-val" id="spiceVal">${Math.round(h.spice)}</span>
+          </div>`;
+      }
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+
+function renderStats() {
+  const eco = calcEco();
+
+  document.getElementById('valSpice').textContent = Math.round(eco.spice);
+  document.getElementById('valTr').textContent    = Math.round(eco.trSol);
+  document.getElementById('valUp').textContent    = Math.round(eco.upkeep);
+  document.getElementById('valNet').textContent   = Math.round(eco.net);
+
+  const netEl = document.getElementById('statNet');
+  netEl.className = 'stat ' + (eco.net >= 0 ? 'success' : 'danger');
+
+  const upEl = document.getElementById('statUp');
+  upEl.className = 'stat ' + (eco.upkeep > 0 ? 'danger' : '');
+
+  document.getElementById('totalLabel').textContent =
+    `Total income — all spice sold @ ${state.price.toFixed(1)}× + net Solari`;
+  document.getElementById('totalVal').textContent =
+    `${Math.round(eco.total)} Solari`;
+}
+
+// ── Full render ───────────────────────────────────────────────────────────────
+
+function render() {
+  renderMap();
+  renderDetail();
+  renderStats();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Event handlers ────────────────────────────────────────────────────────────
+
+function onHexClick(k) {
+  state.selected = state.selected === k ? '' : k;
+  render();
+}
+
+function onPriceChange(v) {
+  state.price = parseFloat(v);
+  document.getElementById('priceVal').textContent = `${state.price.toFixed(1)} sol`;
+  saveState();
+  renderStats();
+}
+
+function onQuirkChange(key, val) {
+  const k = state.selected; if (!k) return;
+  const h = { ...gh(k) };
+
+  if (val) {
+    const activeCount = QUIRKS.filter(q => h.quirks[q.key]).length;
+    if (activeCount >= 2) {
+      showToast('Each hex can have at most 2 quirks.');
+      // Uncheck the checkbox visually without changing state
+      renderDetail();
+      return;
+    }
+  }
+
+  h.quirks = { ...h.quirks, [key]: val };
+  setHex(k, h);
+  renderMap();
+  renderStats();
+}
+
+function onBldgChange(key, val) {
+  const k = state.selected; if (!k) return;
+  if (key==='fur' && val) {
+    const furElsewhere = ALL_HEXES.some(nk => nk!==k && gh(nk).buildings.fur);
+    if (furElsewhere) return;
+  }
+  const h = { ...gh(k) };
+  h.buildings = { ...h.buildings, [key]: val };
+  setHex(k, h);
+  renderMap();
+  renderDetail(); // re-render to show/hide slider and furnace blocked state
+  renderStats();
+}
+
+function onSpiceChange(v) {
+  const k = state.selected; if (!k) return;
+  const h = { ...gh(k), spice: parseFloat(v) };
+  setHex(k, h);
+  const el = document.getElementById('spiceVal');
+  if (el) el.textContent = Math.round(h.spice);
+  renderStats();
+}
+
+function onEnemyChange(val) {
+  const k = state.selected; if (!k) return;
+  const h = { ...gh(k), enemy: val };
+  setHex(k, h);
+  renderMap();
+  renderDetail();
+  renderStats();
+}
+
+function onEnemySpiceChange(v) {
+  const k = state.selected; if (!k) return;
+  const h = { ...gh(k), enemySpice: parseFloat(v) };
+  setHex(k, h);
+  const el = document.getElementById('enemySpiceVal');
+  if (el) el.textContent = Math.round(h.enemySpice);
+  renderStats();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+loadState();
+document.getElementById('priceSlider').value = state.price;
+document.getElementById('priceVal').textContent = `${state.price.toFixed(1)} sol`;
+render();
+</script>
+</body>
+</html>
